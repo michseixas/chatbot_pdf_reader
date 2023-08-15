@@ -166,6 +166,41 @@ export async function selectTable({
     }
 }
 
+
+export async function readData ({
+    conn,
+    database,
+    embedding
+
+}: {
+    conn?: mysql.Connection;
+    database : string;
+    embedding: any
+}) {
+    try {
+        let closeConn = false;
+        if (!conn) {
+            conn = await connectSingleStore({ database });
+            closeConn = true;
+        }
+
+        //look into our database and find an embedding that is similar to the one that we get back from openai
+        const [rows] = await conn.execute( //we are gonna grab the connection and execute a SQL query
+            `SELECT text, DOT_PRODUCT(embedding, JSON_ARRAY_PACK('[${embedding}]')) AS similarity FROM my_book ORDER BY similarity DESC LIMIT 1`
+        )
+
+        if (closeConn) {
+            await stopSingleStore(conn);
+        }
+
+        console.log('rows[0]', rows[0])
+        return rows[0]
+
+    } catch (error){
+        console.error({error})
+        return error
+    }
+}
 // export async function insertTable({
 //     conn,
 //     database,

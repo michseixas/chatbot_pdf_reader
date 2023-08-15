@@ -1,7 +1,7 @@
 import * as express from "express";
 import {
     getDatabases,
-    selectTable,
+    readData
 } from "./connection";
 import * as fs from "fs";
 import * as dotenv from "dotenv";
@@ -12,6 +12,10 @@ dotenv.config();
 
 const app = express();
 const router = express.Router();
+
+// reader_data and my_book were defined in SingleStore
+const database = "reader_data"
+const table = "my_book"
 
 router.get("/api/hello", (req, res, next) => {
     res.json("SingleStore"); //check if SingleStore is working
@@ -81,6 +85,40 @@ router.get("/api/database", async (req, res) => {
     const sqlRes = await getDatabases();
     res.json(sqlRes);
 });
+
+//send the text to the backend:
+// Pass through that text query in order to get a response back from the database
+router.get("/api/database/:text", async (req, res) => {
+    console.log(req.params.text) //type a question and check console :) if I can see the word typed = getting the query from our front end to the backend :))
+    const text = req.params.text //pass this through to openai to create embedding from this
+    const configuration = new Configuration({
+        apiKey: process.env.OPENAIAPI,
+    });
+
+    try {
+        const openai = new OpenAIApi(configuration);
+        const response = await openai.createEmbedding({
+            model: "text-embedding-ada-002",
+            input: text,
+    })
+    const embedding = response.data.data[0].embedding //get the response and go into the data from it, get the date, get the first item and get the embedding, which is gonna be an array
+
+//pass the embedding into the readData function:
+    const sqlRes = await readData({database, embedding}) //waiting for the SQL query to come back with info
+    console.log('lets check the sql response', sqlRes)
+
+    const prompt = `The user asked: ${text}. The most similar text from the book is: ${sqlRes.text}`
+    const completion = await openai.createChatCompletion({
+        model: "gpt-3.5-turbo",
+        messages: [{"role": "system", "content": "You are a helpful assistant."}, {role: "user", content: prompt}],
+      });
+      console.log(completion.data.choices[0].message);
+      res.json(completion.data.choices[0].message)//send it back so we can use it in the frontend
+
+} catch (error){
+    console.error(error)
+}
+})
 
 // router.post("/api/database", bodyParser.json(), async (req, res) => {
 //     console.log("POST /api/database, body:", req.body);
